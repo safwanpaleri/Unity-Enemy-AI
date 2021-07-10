@@ -2,94 +2,84 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.AI;
 
 public class EnemyAI : MonoBehaviour
 {
-    //Reference of target to follow to activate the enemy
-    //Attach Player having NavMeshAgent to this component through unity inspector
-    [SerializeField] Transform Target;
-    
-    //caching of NavMeshAgent for easier use
-    NavMeshAgent navMeshAgent;
+    [Header("GameObjects")]
+    [SerializeField] Player player;
+    [SerializeField] GameObject Bullets;
 
-    //the range between target and enemy to activate the enemy
-    [SerializeField] float Range = 10f;
-    float distanceToTarget = Mathf.Infinity;
+    [Header("Distance Between Player")]
+    [SerializeField] float MaxDis = 5f;
+    [SerializeField] float MinDis = 1f;
+    float DisBtw;
 
-    //Health and Speed characteristics of enemy
-    [SerializeField] int Damage = 10;
-    [SerializeField] float turningSpeed = 5f;
-
-    //Bool to know whether the enemy is activated or not
-    public bool isProvoked = false;
-    
-    //bool to know whether the enemy is alive or not
-    bool dead;
+    [Header("Enemy Constraints")]
+    [SerializeField] int EnemyHealth = 10;
+    [SerializeField] float EnemySpeed = 10f;
+    [SerializeField] float DestroyTime = 3f;
+    [SerializeField] Transform Gun;
+ 
+    [Header("Bullet Constraints")]
+    [SerializeField] float BulletLifeTime = 5f;
+    [SerializeField] float TimeBtwShots = 3f;
+    bool IsShoot = true;
 
     void Start()
     {
-        //caching navMeshagent
-        navMeshAgent = GetComponent<NavMeshAgent>();
+        player = FindObjectOfType<Player>();
     }
 
     void Update()
     {
-        //checking whether the enemy is still alive
-        //if not then return immediately
-        dead = GetComponent<EnemyHealth>().IsDead();
-        if (dead) { return; }
-        
-        //assigning the distance to enemy from target
-        distanceToTarget = Vector3.Distance(Target.position, transform.position);
-        if (isProvoked)
+        if (EnemyHealth < 0 || player == null) { return; }
+        DisBtw = Vector2.Distance(player.gameObject.transform.position, gameObject.transform.position);
+        Gun.LookAt(player.transform);
+        if (DisBtw > MinDis && DisBtw < MaxDis)
         {
-            //calling the movement function if activated
-            EngageTarget();
+            transform.position = Vector2.MoveTowards(transform.position, player.gameObject.transform.position, EnemySpeed * Time.deltaTime);
         }
-        //if not yet activated, compare their distance,
-        //whether the target have reached the range.
-        else if (distanceToTarget <= Range)
+        LookAtPlayer();
+        if(IsShoot && DisBtw <= MinDis)
         {
-            //if the target entered the range then activate
-            isProvoked = true;
+            StartCoroutine(Fire());
         }
-
-    }
-    
-    //Movement Function
-    private void EngageTarget()
-    {
-        //Look at direction of target function
-        lookTarget();
-        
-        //compare distace to target and stopping distance that assigned in navmesh agent in target.
-        if (distanceToTarget >= navMeshAgent.stoppingDistance)
-        {   
-            //if enemy haven't reached the stopping condition, move towards target
-            navMeshAgent.SetDestination(Target.position);
-            //you can implement the animation codes for movement in here
-        }
-    }
-    
-    //Look in direcetion of target
-    private void lookTarget()
-    { 
-        //calculate new direction vector from target's position to enemies position
-        Vector3 direction = (Target.position - transform.position).normalized;
-        
-        //make new qauternion with the new direction vector we calculated to assign that to the enemie's rotation
-        Quaternion lookRotation = Quaternion.LookRotation(new Vector3(direction.x, 0, direction.z));
-        
-        //assign the created quaternion to the enemy
-        transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * turningSpeed);
     }
 
-    //gizmos to give a visual representation of range for debugging process
-    //for altering the range for a better gameplay.
-    private void OnDrawGizmosSelected()
+    private void LookAtPlayer()
     {
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, Range);
+        Vector3 diff = player.transform.position - transform.position;
+        float rotationValue = Mathf.Atan2(diff.y, diff.x) * Mathf.Rad2Deg;
+        Gun.localRotation = Quaternion.Euler(0, 0, rotationValue);
+    }
+
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        if(collision.gameObject.tag == "Player") 
+        {
+            Destroy(collision.gameObject);
+            TakeDamage(); 
+        }
+    }
+
+    void TakeDamage()
+    {
+        EnemyHealth--;
+        if (EnemyHealth <= 0) { Destroy(gameObject, DestroyTime); }
+    }
+
+    IEnumerator Fire()
+    {   
+        IsShoot = false;
+        GameObject Bullet = Instantiate(Bullets,Gun.position,Gun.rotation,Gun.transform) as GameObject;
+        Destroy(Bullet, BulletLifeTime);
+        yield return new WaitForSeconds(TimeBtwShots);
+        IsShoot = true;
+    }
+
+    private void OnDrawGizmos()
+    {
+        Gizmos.color = Color.green;
+        Gizmos.DrawLine(Gun.position, player.transform.position);
     }
 }
